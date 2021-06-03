@@ -44,7 +44,10 @@ records = {
     D.ns2: [A(IP)],
     D.mail: [A(IP)],
     D.andrei: [CNAME(D)],
-    'd1.': [A('10.0.0.1')],
+    'd1.': [A('10.0.0.251')],
+    'd2.': [A('10.0.0.252')],
+    'd3.': [A('10.1.0.253')],
+    'd4.': [A('10.1.0.254')],
 }
 
 
@@ -60,7 +63,7 @@ def dns_response(data):
     qtype = request.q.qtype
     qt = QTYPE[qtype]
 
-    if qn == D or qn.endswith('.' + D):
+    if qn == D or qn.endswith('.'):
 
         for name, rrs in records.items():
             if name == qn:

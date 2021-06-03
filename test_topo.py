@@ -4,16 +4,12 @@ from mininet.node import Node
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.util import quietRun
+
 def checkRequired():
     "Check for required executables"
-    required = [ 'udhcpd', 'udhcpc', 'dnsmasq', 'curl', 'firefox' ]
+    required = [ 'dnslib']
     for r in required:
-        if not quietRun( 'which ' + r ):
-            print('{} Installing'.format(r))
-            print(quietRun( 'apt-get install -y ' + r ))
-            if r == 'dnsmasq':
-                # Don't run dnsmasq by default!
-                print(quietRun('update-rc.d dnsmasq disable' ))
+        print(quietRun( 'pip install ' + r ))
 
 
 class LinuxRouter(Node):
@@ -48,20 +44,16 @@ class NetworkTopo(Topo):
 
         # Adding hosts specifying the default route
         d1 = self.addHost(name='d1',
-                          ip='10.0.0.251/24',
-                          defaultRoute='via 10.0.0.1')
+                          ip='10.0.0.251/24')
         d2 = self.addHost(name='d2',
-                          ip='10.0.0.252/24',
-                          defaultRoute='via 10.0.0.1')
+                          ip='10.0.0.252/24')
         d3 = self.addHost(name='d3',
-                          ip='10.1.0.253/24',
-                          defaultRoute='via 10.1.0.1')
+                          ip='10.1.0.253/24')
         d4 = self.addHost(name='d4',
-                          ip='10.1.0.254/24',
-                          defaultRoute='via 10.1.0.1')
+                          ip='10.1.0.254/24')
 
         # Add DNS
-        dns = self.addHost(name='dns', ip='10.0.0.2/24', defaultRoute='via 10.0.0.1')
+        dns = self.addHost(name='dns', ip='10.0.0.2/24')
 
         # Add dns-switch links
         self.addLink(dns, s1)
@@ -73,19 +65,33 @@ class NetworkTopo(Topo):
         self.addLink(d4, s2)
 
 def runDNS(host):
-    host.cmd('python3 dns_mock.py --udp --tcp --port 53')
+    host.cmd('python3 dns_mock.py --udp --tcp --port 53 &')
+
+def addRoute(hosts):
+    gatwayIPs = {
+        'dns': ['10.1.0.0', '10.0.0.1'],
+        'd1': ['10.1.0.0', '10.0.0.1'], 
+        'd2': ['10.1.0.0', '10.0.0.1'], 
+        'd3': ['10.0.0.0', '10.1.0.1'], 
+        'd4': ['10.0.0.0', '10.1.0.1'], 
+    }
+    for host in hosts:
+        host.cmd('ip route add {}/16 via {}'.format(gatwayIPs[str(host)][0], gatwayIPs[str(host)][1]))
 
 def run():
+    checkRequired()
+
     topo = NetworkTopo()
     net = Mininet(topo=topo)
 
-    dns = net.get('dns')
+    hosts = net.get('dns', 'd1', 'd2', 'd3', 'd4')
 
     net.addNAT().configDefault()
 
     net.start()
 
-    runDNS(dns)
+    runDNS(hosts[0])
+    addRoute(hosts)
 
     CLI(net)
     net.stop()
