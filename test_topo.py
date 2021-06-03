@@ -1,6 +1,6 @@
 from mininet.topo import Topo
 from mininet.net import Mininet
-from mininet.node import Node
+from mininet.node import Node, RemoteController
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.util import quietRun
@@ -82,7 +82,7 @@ def run():
     checkRequired()
 
     topo = NetworkTopo()
-    net = Mininet(topo=topo)
+    net = Mininet(topo=topo, controller=RemoteController)
 
     hosts = net.get('dns', 'd1', 'd2', 'd3', 'd4')
 
