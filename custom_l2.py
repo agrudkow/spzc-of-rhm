@@ -20,11 +20,14 @@ exact-match rules for each flow.
 """
 
 from pox.core import core
+from pox.lib.addresses import IPAddr
+from pox.lib.packet.dns import dns
 import pox.openflow.libopenflow_01 as of
 from pox.lib.util import dpid_to_str, str_to_dpid
 from pox.lib.util import str_to_bool
 import time
 from pox.lib.packet.ipv4 import ipv4
+from pox.lib.packet.arp import arp
 log = core.getLogger()
 
 # We don't want to flood immediately when a switch connects.
@@ -44,6 +47,8 @@ r_ip = {
   '10.1.0.253': '10.1.0.12',
   '10.1.0.254': '10.1.0.13'
 }
+
+DNS_IP = '10.0.0.2'
 
 
 class LearningSwitch (object):
@@ -123,6 +128,9 @@ class LearningSwitch (object):
 
     packet = event.parsed
 
+    def convert_vip_to_rip(vip):
+      return v_ip[vip]
+
     def flood (message = None):
       """ Floods the packet """
       msg = of.ofp_packet_out()
@@ -144,6 +152,8 @@ class LearningSwitch (object):
         pass
         #log.info("Holding down flood for %s", dpid_to_str(event.dpid))
       msg.data = event.ofp
+      if isinstance(event.parsed.next, arp):
+        log.debug('[FLOOD MSG.DATA]: event.parsed.next.protodst: {}'.format(event.parsed.next.protodst))
       msg.in_port = event.port
       self.connection.send(msg)
 
@@ -173,10 +183,19 @@ class LearningSwitch (object):
     log.debug("arpTable %s, switch %s" % (self.macToPort, self.connection.dpid))
     if not self.transparent: # 2
       if packet.type == packet.LLDP_TYPE or packet.dst.isBridgeFiltered():
+        log.debug('[DROP]: packet type: {}, {} => {}'.format(packet.type, packet.next.protosrc, packet.next.protodst))
         drop() # 2a
         return
 
+    # TODO: 
+    # if isinstance(packet.next, dns) and packet.next.dstip.toStr() == DNS_IP:
+    #   pass
+
     if packet.dst.is_multicast:
+      # log.debug('[IS_MULTICAST]: packet next type {}'.format(type(packet.next)))
+      if isinstance(packet.next, arp) and packet.next.protodst.toStr() in v_ip:
+        log.debug("ARP msg: %i %i %s => %s", self.connection.dpid, event.port, packet.next.protosrc, packet.next.protodst)
+        packet.next.protodst = IPAddr(convert_vip_to_rip(packet.next.protodst.toStr()))
       flood() # 3a
     else:
       if packet.dst not in self.macToPort: # 4
@@ -203,7 +222,10 @@ class LearningSwitch (object):
                  (packet.src, event.port, packet.dst, port))
 
         if isinstance(packet.next, ipv4):
-          log.debug("IPv4 msg: %i %i IP %s => %s", self.connection.dpid,event.port,
+          if packet.next.dstip.toStr() in v_ip:
+             packet.next.dstip = IPAddr(convert_vip_to_rip(packet.next.dstip.toStr()))
+            
+          log.debug("IPv4 msg: %i %i IP %s => %s", self.connection.dpid, event.port,
                 packet.next.srcip,packet.next.dstip)
         self.resend_packet(packet, port)
 
