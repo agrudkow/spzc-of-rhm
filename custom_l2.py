@@ -20,7 +20,7 @@ exact-match rules for each flow.
 """
 
 from pox.core import core
-from pox.lib.addresses import IPAddr
+from pox.lib.addresses import IPAddr, EthAddr
 from pox.lib.packet.dns import dns
 import pox.openflow.libopenflow_01 as of
 from pox.lib.util import dpid_to_str, str_to_dpid
@@ -28,6 +28,8 @@ from pox.lib.util import str_to_bool
 import time
 from pox.lib.packet.ipv4 import ipv4
 from pox.lib.packet.arp import arp
+from pox.lib.packet.ethernet import ethernet
+
 log = core.getLogger()
 
 # We don't want to flood immediately when a switch connects.
@@ -50,6 +52,9 @@ r_ip = {
 
 DNS_IP = '10.0.0.2'
 
+def _dpid_to_mac (dpid):
+  # Should maybe look at internal port MAC instead?
+  return EthAddr("%012x" % (dpid & 0xffFFffFFffFF,))
 
 class LearningSwitch (object):
   """
@@ -92,8 +97,9 @@ class LearningSwitch (object):
     self.connection = connection
     self.transparent = transparent
 
-    # Our table
+    # Our tables
     self.macToPort = {}
+    self.arpTable = {}
 
     # We want to hear PacketIn messages, so we listen
     # to the connection
@@ -180,6 +186,8 @@ class LearningSwitch (object):
 
 
     self.macToPort[packet.src] = event.port # 1
+    if isinstance(packet.next, ipv4):
+      self.arpTable[packet.next.srcip.toStr()] = packet.src
     log.debug("arpTable %s, switch %s" % (self.macToPort, self.connection.dpid))
     if not self.transparent: # 2
       if packet.type == packet.LLDP_TYPE or packet.dst.isBridgeFiltered():
@@ -195,8 +203,24 @@ class LearningSwitch (object):
       # log.debug('[IS_MULTICAST]: packet next type {}'.format(type(packet.next)))
       if isinstance(packet.next, arp) and packet.next.protodst.toStr() in v_ip:
         log.debug("ARP msg: %i %i %s => %s", self.connection.dpid, event.port, packet.next.protosrc, packet.next.protodst)
-        packet.next.protodst = IPAddr(convert_vip_to_rip(packet.next.protodst.toStr()))
-      flood() # 3a
+        protodst = packet.next.protodst
+        dst_rip = IPAddr(convert_vip_to_rip(protodst.toStr()))
+        if dst_rip.toStr() in self.arpTable:
+          packet.dst = packet.src
+          packet.src = self.arpTable[dst_rip.toStr()]
+          packet.next.protodst = packet.next.protosrc
+          packet.next.protosrc = protodst
+          hwsrc = packet.next.hwsrc
+          packet.next.hwdst = packet.next.hwsrc
+          packet.next.hwsrc = self.arpTable[dst_rip.toStr()]
+          packet.next.opcode = arp.REPLY
+          msg = of.ofp_packet_out()
+          msg.data = packet
+          msg.actions.append(of.ofp_action_output(port = event.port))
+          msg.in_port = 65535
+          event.connection.send(msg)
+      else:
+        flood() # 3a
     else:
       if packet.dst not in self.macToPort: # 4
         flood("Port for %s unknown -- flooding" % (packet.dst,)) # 4a
