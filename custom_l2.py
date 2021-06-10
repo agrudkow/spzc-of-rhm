@@ -29,7 +29,8 @@ import time
 from pox.lib.packet.ipv4 import ipv4
 from pox.lib.packet.arp import arp
 from pox.lib.packet.ethernet import ethernet
-
+from time import sleep
+from threading import Thread
 log = core.getLogger()
 
 # We don't want to flood immediately when a switch connects.
@@ -50,7 +51,42 @@ r_ip = {
   '10.1.0.254': '10.1.0.13'
 }
 
+v_ip2 = {
+  '10.0.0.100': '10.0.0.251',
+  '10.0.0.110': '10.0.0.252',
+  '10.1.0.120': '10.1.0.253',
+  '10.1.0.130': '10.1.0.254'
+}
+
+
+r_ip2 = {
+  '10.0.0.251': '10.0.0.100',
+  '10.0.0.252': '10.0.0.110',
+  '10.1.0.253': '10.1.0.120',
+  '10.1.0.254': '10.1.0.130'
+}
+
+
+
 DNS_IP = '10.0.0.2'
+
+class IpMutation:
+  def __init__(self):
+    self._running = True
+    
+  def terminate(self):
+    self._running = False
+    
+  def run(self):
+    global v_ip, r_ip, v_ip2, r_ip2
+    while self._running:
+      tmp_vip = v_ip
+      v_ip = v_ip2
+      v_ip2 = tmp_vip
+      tmp_rip = r_ip
+      r_ip = r_ip2
+      r_ip2 = tmp_rip
+      time.sleep(5)
 
 def _dpid_to_mac (dpid):
   # Should maybe look at internal port MAC instead?
@@ -274,7 +310,7 @@ class LearningSwitch (object):
           if packet.next.srcip.toStr() == DNS_IP:
             log.debug("Its packet from dns server")
             log.debug(a_dns.answers)                 
-            for answer in  packet.next.next.next.answers:
+            for answer in  a_dns.answers:
               log.debug(answer)
               if answer.qtype == 1:
                 log.debug("Its A type dns dns dns") 
@@ -333,5 +369,10 @@ def launch (transparent=False, hold_down=_flood_delay, ignore = None):
   if ignore:
     ignore = ignore.replace(',', ' ').split()
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
+  
+  c = IpMutation()
+  t = Thread(target=c.run)
+  t.daemon = True
+  t.start()
 
   core.registerNew(l2_learning, str_to_bool(transparent), ignore)
