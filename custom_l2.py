@@ -119,13 +119,40 @@ class LearningSwitch (object):
     """
     msg = of.ofp_packet_out()
     msg.data = packet_in
-
+    #check_dns = msg.data.find('dns')
+    #if check_dns != None:
+    #  msg.data.next.next.next.answers[0].name  = msg.data.next.next.next.answers[0].name.decode()
     # Add an action to send to the specified port
     action = of.ofp_action_output(port = out_port)
     msg.actions.append(action)
 
     # Send message to switch
     self.connection.send(msg)
+
+  def send_packet (self, buffer_id, raw_data, out_port, in_port):
+   """
+   Sends a packet out of the specified switch port.
+   If buffer_id is a valid buffer on the switch, use that.  Otherwise,
+   send the raw data in raw_data.
+   The "in_port" is the port number that packet arrived on.  Use
+   OFPP_NONE if you're generating this packet.
+   """
+   msg = of.ofp_packet_out()
+   msg.in_port = in_port
+   if buffer_id != -1 and buffer_id is not None:
+     # We got a buffer ID from the switch; use that
+     msg.buffer_id = buffer_id
+   else:
+     # No buffer ID from switch -- we got the raw data
+     if raw_data is None:
+       # No raw_data specified -- nothing to send!
+       return
+     msg.data = raw_data
+   action = of.ofp_action_output(port = out_port)
+   msg.actions.append(action)
+   
+   # Send message to switch
+   self.connection.send(msg)
 
   def _handle_PacketIn (self, event):
     """
@@ -242,17 +269,34 @@ class LearningSwitch (object):
        # msg.actions.append(of.ofp_action_output(port = port))
        # msg.data = event.ofp # 6a
        # self.connection.send(msg)
+        a_dns = packet.find('dns')
+        if a_dns != None:
+          if packet.next.srcip.toStr() == DNS_IP:
+            log.debug("Its packet from dns server")
+            log.debug(a_dns.answers)                 
+            for answer in  packet.next.next.next.answers:
+              log.debug(answer)
+              if answer.qtype == 1:
+                log.debug("Its A type dns dns dns") 
+                if answer.rddata.toStr() in r_ip:
+                  log.debug("change ip ip ip to vip")
+                  log.debug(answer.rddata)
+                  answer.rddata = IPAddr(r_ip[answer.rddata.toStr()]) 
+                  log.debug(answer.rddata)
+       
         log.debug("sending packet out for %s.%i -> %s.%i" %
                  (packet.src, event.port, packet.dst, port))
 
         if isinstance(packet.next, ipv4):
           if packet.next.dstip.toStr() in v_ip:
-             packet.next.dstip = IPAddr(convert_vip_to_rip(packet.next.dstip.toStr()))
-            
+            packet.next.dstip = IPAddr(convert_vip_to_rip(packet.next.dstip.toStr()))
+          if packet.next.srcip.toStr() in r_ip:
+            packet.next.srcip = IPAddr(r_ip[ packet.next.srcip.toStr()])
           log.debug("IPv4 msg: %i %i IP %s => %s", self.connection.dpid, event.port,
                 packet.next.srcip,packet.next.dstip)
+       
         self.resend_packet(packet, port)
-
+        
 class l2_learning (object):
   """
   Waits for OpenFlow switches to connect and makes them learning switches.
