@@ -7,7 +7,7 @@ import sys
 import time
 import threading
 import traceback
-import socketserver
+import SocketServer
 import struct
 
 try:
@@ -82,7 +82,7 @@ def dns_response(data):
     return reply.pack()
 
 
-class BaseRequestHandler(socketserver.BaseRequestHandler):
+class BaseRequestHandler(SocketServer.BaseRequestHandler):
 
     def get_data(self):
         raise NotImplementedError
@@ -140,8 +140,8 @@ def main():
     print("Starting nameserver...")
 
     servers = []
-    if args.udp: servers.append(socketserver.ThreadingUDPServer(('', args.port), UDPRequestHandler))
-    if args.tcp: servers.append(socketserver.ThreadingTCPServer(('', args.port), TCPRequestHandler))
+    if args.udp: servers.append(SocketServer.ThreadingUDPServer(('', args.port), UDPRequestHandler))
+    if args.tcp: servers.append(SocketServer.ThreadingTCPServer(('', args.port), TCPRequestHandler))
 
     for s in servers:
         thread = threading.Thread(target=s.serve_forever)  # that thread will start one more thread for each request

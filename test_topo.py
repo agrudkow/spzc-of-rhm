@@ -25,7 +25,7 @@ class LinuxRouter(Node):
 class NetworkTopo(Topo):
     def build(self, **_opts):
         # Add 2 routers in two different subnets
-        r1 = self.addHost('r1', cls=LinuxRouter, ip='10.0.0.1/24')
+        r1 = self.addHost('r1', cls=LinuxRouter, ip='10.0.0.1/16')
 
         # Add 2 switches
         s1 = self.addSwitch('s1')
@@ -35,25 +35,25 @@ class NetworkTopo(Topo):
         self.addLink(s1,
                      r1,
                      intfName2='r1-eth1',
-                     params2={'ip': '10.0.0.1/24'})
+                     params2={'ip': '10.0.0.1/16'})
 
         self.addLink(s2,
                      r1,
                      intfName2='r1-eth2',
-                     params2={'ip': '10.1.0.1/24'})
+                     params2={'ip': '10.1.0.1/16'})
 
         # Adding hosts specifying the default route
         d1 = self.addHost(name='d1',
-                          ip='10.0.0.251/24')
+                          ip='10.0.0.251/16')
         d2 = self.addHost(name='d2',
-                          ip='10.0.0.252/24')
+                          ip='10.0.0.252/16')
         d3 = self.addHost(name='d3',
-                          ip='10.1.0.253/24')
+                          ip='10.1.0.253/16')
         d4 = self.addHost(name='d4',
-                          ip='10.1.0.254/24')
+                          ip='10.1.0.254/16')
 
         # Add DNS
-        dns = self.addHost(name='dns', ip='10.0.0.2/24')
+        dns = self.addHost(name='dns', ip='10.0.0.2/16')
 
         # Add dns-switch links
         self.addLink(dns, s1)
@@ -65,7 +65,7 @@ class NetworkTopo(Topo):
         self.addLink(d4, s2)
 
 def runDNS(host):
-    host.cmd('python3 dns_mock.py --udp --tcp --port 53 &')
+    host.cmd('python2 dns_mock.py --udp --tcp --port 53 &')
 
 def addRoute(hosts):
     gatwayIPs = {
@@ -85,13 +85,13 @@ def run():
     net = Mininet(topo=topo, controller=RemoteController)
 
     hosts = net.get('dns', 'd1', 'd2', 'd3', 'd4')
-
     net.addNAT().configDefault()
 
     net.start()
 
     runDNS(hosts[0])
     addRoute(hosts)
+    net.pingAll()
 
     CLI(net)
     net.stop()
