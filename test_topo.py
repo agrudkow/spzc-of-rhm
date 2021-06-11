@@ -76,7 +76,6 @@ def addRoute(hosts):
         'd4': ['10.0.0.0', '10.1.0.1'], 
     }
     for host in hosts:
-#        host.cmd('ip route del {}/24'.format('10.0.0.0'))
         host.cmd('ip route add {}/16 via {}'.format(gatwayIPs[str(host)][0], gatwayIPs[str(host)][1]))
 
 def run():
@@ -86,13 +85,13 @@ def run():
     net = Mininet(topo=topo, controller=RemoteController)
 
     hosts = net.get('dns', 'd1', 'd2', 'd3', 'd4')
-
     net.addNAT().configDefault()
 
     net.start()
 
     runDNS(hosts[0])
     addRoute(hosts)
+    net.pingAll()
 
     CLI(net)
     net.stop()
