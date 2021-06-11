@@ -19,9 +19,11 @@ It is somwhat similar to NOX's pyswitch in that it installs
 exact-match rules for each flow.
 """
 
+from merge_dicts import merge_dicts
+from generate_all_ips import generate_all_ips
+from random_host_mutation import RandomHostMutation
 from pox.core import core
 from pox.lib.addresses import IPAddr, EthAddr
-from pox.lib.packet.dns import dns
 import pox.openflow.libopenflow_01 as of
 from pox.lib.util import dpid_to_str, str_to_dpid
 from pox.lib.util import str_to_bool
@@ -29,7 +31,6 @@ import time
 from pox.lib.packet.ipv4 import ipv4
 from pox.lib.packet.arp import arp
 from pox.lib.packet.ethernet import ethernet
-from time import sleep
 from threading import Thread
 log = core.getLogger()
 
@@ -37,35 +38,15 @@ log = core.getLogger()
 # Can be overriden on commandline.
 _flood_delay = 0
 
-v_ip = {
-  '10.0.0.10': '10.0.0.251',
-  '10.0.0.11': '10.0.0.252',
-  '10.1.0.12': '10.1.0.253',
-  '10.1.0.13': '10.1.0.254'
-}
+v_ip = dict()
 
-r_ip = {
-  '10.0.0.251': '10.0.0.10',
-  '10.0.0.252': '10.0.0.11',
-  '10.1.0.253': '10.1.0.12',
-  '10.1.0.254': '10.1.0.13'
-}
+r_ip = dict()
 
-v_ip2 = {
-  '10.0.0.100': '10.0.0.251',
-  '10.0.0.110': '10.0.0.252',
-  '10.1.0.120': '10.1.0.253',
-  '10.1.0.130': '10.1.0.254'
-}
+HOSTS_S1 = ['10.0.0.251', '10.0.0.252']
+HOSTS_S2 = ['10.1.0.253', '10.1.0.254']
 
-
-r_ip2 = {
-  '10.0.0.251': '10.0.0.100',
-  '10.0.0.252': '10.0.0.110',
-  '10.1.0.253': '10.1.0.120',
-  '10.1.0.254': '10.1.0.130'
-}
-
+IP_RANGE_HOSTS_S1 = ('10.0.0.10', '10.1.0.0')
+IP_RANGE_HOSTS_S2 = ('10.1.0.10', '10.2.0.0')
 
 
 DNS_IP = '10.0.0.2'
@@ -73,25 +54,27 @@ DNS_IP = '10.0.0.2'
 class IpMutation:
   def __init__(self):
     self._running = True
+
+    v_ips_s1 = [ip for ip in generate_all_ips(*IP_RANGE_HOSTS_S1) if ip not in HOSTS_S1]
+    self.rhm_s1 = RandomHostMutation(HOSTS_S1, v_ips_s1)
+
+    v_ips_s2 = [ip for ip in generate_all_ips(*IP_RANGE_HOSTS_S2) if ip not in HOSTS_S2]
+    self.rhm_s2 = RandomHostMutation(HOSTS_S2, v_ips_s2)
     
   def terminate(self):
     self._running = False
     
   def run(self):
-    global v_ip, r_ip, v_ip2, r_ip2
+    global v_ip, r_ip
+
     while self._running:
-      tmp_vip = v_ip
-      v_ip = v_ip2
-      v_ip2 = tmp_vip
-      tmp_rip = r_ip
-      r_ip = r_ip2
-      r_ip2 = tmp_rip
+      r_ip = merge_dicts(self.rhm_s1.get_r_ips(), self.rhm_s2.get_r_ips())
+      v_ip = merge_dicts(self.rhm_s1.get_v_ips(), self.rhm_s2.get_v_ips())
+
+      self.rhm_s1.mutate()
+      self.rhm_s2.mutate()
+      
       time.sleep(5)
-
-def _dpid_to_mac (dpid):
-  # Should maybe look at internal port MAC instead?
-  return EthAddr("%012x" % (dpid & 0xffFFffFFffFF,))
-
 class LearningSwitch (object):
   """
   The learning switch "brain" associated with a single OpenFlow switch.
@@ -258,10 +241,6 @@ class LearningSwitch (object):
         drop() # 2a
         return
 
-    # TODO: 
-    # if isinstance(packet.next, dns) and packet.next.dstip.toStr() == DNS_IP:
-    #   pass
-
     if packet.dst.is_multicast:
       # log.debug('[IS_MULTICAST]: packet next type {}'.format(type(packet.next)))
       if isinstance(packet.next, arp) and packet.next.protodst.toStr() in v_ip:
@@ -273,7 +252,6 @@ class LearningSwitch (object):
           packet.src = self.arpTable[dst_rip.toStr()]
           packet.next.protodst = packet.next.protosrc
           packet.next.protosrc = protodst
-          hwsrc = packet.next.hwsrc
           packet.next.hwdst = packet.next.hwsrc
           packet.next.hwsrc = self.arpTable[dst_rip.toStr()]
           packet.next.opcode = arp.REPLY
