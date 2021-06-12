@@ -39,7 +39,7 @@ class RandomHostMutation():
 
     for i, r_ip in enumerate(self.r_ips):
       # i is used to account for addition and removal of ips
-      idx = get_rand_idx(total_len, total_len - i)
+      idx = get_rand_idx(total_len - i)
       v_ip = self.all_v_ips[idx]
 
       old_v_ip =  self.r_ips[r_ip]
