@@ -89,7 +89,7 @@ def run():
 
     net.start()
 
-    # runDNS(hosts[0])
+    runDNS(hosts[0])
     addRoute(hosts)
     net.pingAll()
 

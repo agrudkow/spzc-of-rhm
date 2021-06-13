@@ -187,22 +187,15 @@ class LearningSwitch (object):
       """ Floods the packet """
       msg = of.ofp_packet_out()
       if time.time() - self.connection.connect_time >= _flood_delay:
-        # Only flood if we've been connected for a little while...
-
         if self.hold_down_expired is False:
-          # Oh yes it is!
           self.hold_down_expired = True
           log.info("%s: Flood hold-down expired -- flooding",
               dpid_to_str(event.dpid))
 
         if message is not None: log.debug(message)
-        #log.debug("%i: flood %s -> %s", event.dpid,packet.src,packet.dst)
-        # OFPP_FLOOD is optional; on some switches you may need to change
-        # this to OFPP_ALL.
         msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
       else:
         pass
-        #log.info("Holding down flood for %s", dpid_to_str(event.dpid))
       msg.data = event.ofp
       if isinstance(event.parsed.next, arp):
         log.debug('[FLOOD MSG.DATA]: event.parsed.next.protodst: {}'.format(event.parsed.next.protodst))
@@ -242,7 +235,6 @@ class LearningSwitch (object):
         return
 
     if packet.dst.is_multicast:
-      # log.debug('[IS_MULTICAST]: packet next type {}'.format(type(packet.next)))
       if isinstance(packet.next, arp) and packet.next.protodst.toStr() in v_ip:
         log.debug("ARP msg: %i %i %s => %s", self.connection.dpid, event.port, packet.next.protosrc, packet.next.protodst)
         protodst = packet.next.protodst
@@ -274,15 +266,6 @@ class LearningSwitch (object):
           drop(10)
           return
         # 6
-       # log.debug("installing flow for %s.%i -> %s.%i" %
-       #           (packet.src, event.port, packet.dst, port))
-       # msg = of.ofp_flow_mod()
-       # msg.match = of.ofp_match.from_packet(packet, event.port)
-       # msg.idle_timeout = 10
-       # msg.hard_timeout = 30
-       # msg.actions.append(of.ofp_action_output(port = port))
-       # msg.data = event.ofp # 6a
-       # self.connection.send(msg)
         a_dns = packet.find('dns')
         if a_dns != None:
           if packet.next.srcip.toStr() == DNS_IP:
